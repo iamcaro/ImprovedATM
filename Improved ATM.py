@@ -3,11 +3,16 @@ import datetime
 timeStamp = datetime.datetime.now()
 
 import random
- 
+import validation
+import database
+import os
+from getpass import getpass
+
+auth_session_path = "data/auth_session/"
+
 def generationAccountNumber():    
     return random.randrange(1111111111,9999999999)
 
-database = {} 
 
 def init():
     
@@ -33,19 +38,65 @@ def login():
     print("*****Login to your account***** \n")
 
     accountNumberFromUser = int(input("What is your account number? \n"))
-    password = input("What is your password? \n")    
 
-    for accountNumber,userDetails in database.items():
-        if(accountNumber == accountNumberFromUser):
-            if(userDetails[3] == password):
-                bankOperation(userDetails)
+    is_valid_account_number = validation.account_number_validation(accountNumberFromUser)
+
+    if is_valid_account_number:
+
+        password = getpass("What is your password? \n")    
+
+        user = database.authenticated_user(accountNumberFromUser, password)
+
+        if user:
+            
+            create_auth_session(accountNumberFromUser)
+            
+            bankOperation(accountNumberFromUser, user)
                    
-    print("Invalid account or password")
+        print("Invalid account or password")
+
+    else:
+        print("Account number invalid")    
+
     attempt = int(input("(1) Try again, (2) Exit \n"))
+    
     if(attempt == 1):
         login()
+    
     else:
         init()
+
+
+def create_auth_session(user_account_number):
+    try:
+
+        f = open(auth_session_path + str(user_account_number) + ".txt", "x")
+
+    except FileExistsError:
+        # Ignore error if file exists.
+        pass
+
+    else:
+        f.close()
+
+def delete_auth_session(user_account_number):
+
+    is_delete_successful = False
+
+    if os.path.exists(auth_session_path + str(user_account_number) + ".txt"):
+
+        try:
+
+            os.remove(auth_session_path + str(user_account_number) + ".txt")
+            is_delete_successful = True
+
+        except FileNotFoundError:
+
+            print("File not found")
+
+        finally:
+
+            return is_delete_successful
 
 
 def register():
@@ -55,22 +106,28 @@ def register():
     email = input("What is your email address? \n")
     first_name  = input("What is your first name? \n")
     last_name = input("What is your last name? \n")
-    password = input("Create a password for yourself \n")
-    currentBalance = 0
-
+    password = getpass("Create a password for yourself \n")
+    
     accountNumber = generationAccountNumber()
 
-    database[accountNumber] = [ first_name, last_name, email, password, currentBalance]
+    is_user_created = database.create(accountNumber, first_name, last_name, email, password)
 
-    print("Your account has been created")
-    print(" ============================")
-    print("Your account number is: %d" % accountNumber)
-    print("Make sure you keep it safe")
-    print(" ============================")
+    if is_user_created:
 
-    login()
+        print("Your account has been created")
+        print(" ============================")
+        print("Your account number is: %d" % accountNumber)
+        print("Make sure you keep it safe")
+        print(" ============================")
 
-def bankOperation(user):
+        login()
+
+    else:
+        print("Something went wrong, please try again")
+        register()
+
+
+def bankOperation(accountNumber, user):
 
     print("=========================== \n")
     print(timeStamp.strftime("%x %X"))
@@ -78,7 +135,9 @@ def bankOperation(user):
 
     print("Welcome %s %s! \n" % (user[0], user[1]))
 
-  
+    # Converting the balance to an integer to do math on it.
+    user[4] = int(user[4])
+
     while True:
         selectedOption = int(input("What would you like to do? (1) Deposit (2) Withdrawal (3) Logout (4) Exit \n"))
 
@@ -89,10 +148,14 @@ def bankOperation(user):
             withdrawalOperation(user)
 
         elif(selectedOption == 3):
+            database.save(accountNumber, user)
+            delete_auth_session(accountNumber)
             logout()
 
         elif(selectedOption == 4):
-            exit()    
+            database.save(accountNumber, user)
+            delete_auth_session(accountNumber)
+            exit()
 
         else:
             print("Invalid option selected")
